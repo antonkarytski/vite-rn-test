@@ -1,0 +1,24 @@
+.SingleDrawingHistoryBlock {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  padding: 5px;
+  margin: 0 5px;
+  height: 95vh;
+  box-sizing: border-box;
+}
+
+.DrawingControllerBlock {
+  padding: 5px;
+  margin-bottom: 5px;
+
+  & > * {
+    margin-right: 5px;
+  }
+}
+
+.ChartsContainer {
+  width: 100%;
+  display: flex;
+  flex: 1;
+}

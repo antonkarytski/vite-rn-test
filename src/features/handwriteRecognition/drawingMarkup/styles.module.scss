@@ -1,0 +1,70 @@
+.MarkupBlockContainer {
+  display: flex;
+  flex-direction: row;
+  flex: 1;
+}
+
+.MarkupBlock {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  margin-right: 5px;
+}
+
+.PreviewBlock {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+}
+
+.PrimitivesList {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+}
+
+.MarkupBoard {
+  border-radius: 5px;
+  border: 1px solid #333;
+}
+
+.Primitive {
+  margin: 5px;
+  border-radius: 5px;
+  border: 1px solid #333;
+  transition: background-color 0.2s ease-in-out;
+  &:hover {
+    cursor: pointer;
+    background-color: #a3a8ff;
+  }
+}
+
+.MarkupKeyboard {
+  margin-top: 5px;
+}
+
+.PrimitivePreviewValue {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 30px;
+  width: 30px;
+  text-align: center;
+  padding-top: 5px;
+  padding-bottom: 5px;
+}
+
+.PrimitivePreviewRemoveButton {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  height: 20px;
+  width: 20px;
+  display: flex;
+  cursor: pointer;
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+  border-radius: 5px;
+  background: #dc0809ac;
+}

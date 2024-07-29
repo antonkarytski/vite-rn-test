@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Handwriting to Digital Ink</title>
+  <script async src="https://docs.opencv.org/4.x/opencv.js"></script>
+</head>
+<body>
+<input type="file" id="fileInput" />
+<canvas id="canvasOutput"></canvas>
+<script>
+
+  function getSqDist(p1, p2) {
+    var dx = p1.x - p2.x,
+      dy = p1.y - p2.y
+
+    return dx * dx + dy * dy
+  }
+
+  // basic distance-based simplification
+  function simplifyRadialDist(
+    points,
+    sqTolerance
+  ) {
+    const length = points.length
+    if (length <= 4) return points
+
+    const newPoints = [points[0], points[1]]
+    let prevPoint = points[1]
+    let point = points[2]
+
+    for (let i = 2; i < length; i++) {
+      point = points[i]
+      if (getSqDist(point, prevPoint) > sqTolerance) {
+        newPoints.push(point)
+        prevPoint = point
+      }
+    }
+
+    if (prevPoint !== point) newPoints.push(point)
+    return newPoints
+  }
+
+  // square distance from a point to a segment
+  function getSqSegDist(p, p1, p2) {
+    var x = p1.x,
+      y = p1.y,
+      dx = p2.x - x,
+      dy = p2.y - y
+
+    if (dx !== 0 || dy !== 0) {
+      var t = ((p.x - x) * dx + (p.y - y) * dy) / (dx * dx + dy * dy)
+
+      if (t > 1) {
+        x = p2.x
+        y = p2.y
+      } else if (t > 0) {
+        x += dx * t
+        y += dy * t
+      }
+    }
+
+    dx = p.x - x
+    dy = p.y - y
+
+    return dx * dx + dy * dy
+  }
+
+  function simplifyDPStep(
+    points,
+    first,
+    last,
+    sqTolerance,
+    simplified
+  ) {
+    var maxSqDist = sqTolerance,
+      index
+
+    for (var i = first + 1; i < last; i++) {
+      var sqDist = getSqSegDist(points[i], points[first], points[last])
+
+      if (sqDist > maxSqDist) {
+        index = i
+        maxSqDist = sqDist
+      }
+    }
+
+    if (maxSqDist > sqTolerance) {
+      if (index - first > 1) {
+        simplifyDPStep(points, first, index, sqTolerance, simplified)
+      }
+      simplified.push(points[index])
+      if (last - index > 1) {
+        simplifyDPStep(points, index, last, sqTolerance, simplified)
+      }
+    }
+  }
+
+  function simplifyDouglasPeucker(
+    points,
+    sqTolerance
+  ) {
+    const last = points.length - 2
+
+    const simplified = [points[0], points[1]]
+    simplifyDPStep(points, 1, last, sqTolerance, simplified)
+    simplified.push(points[last], points[last + 1])
+
+    return simplified
+  }
+
+  function simplify(
+    points,
+    tolerance,
+    highestQuality
+  ) {
+    if (points.length <= 4) return points
+
+    const sqTolerance = tolerance * tolerance
+    points = highestQuality ? points : simplifyRadialDist(points, sqTolerance)
+    points = simplifyDouglasPeucker(points, sqTolerance)
+
+    return points
+  }
+
+  function filterAndClusterPoints(points, distanceThreshold, clusterSize) {
+    // Filter out points that are far from their neighbors
+    let filteredPoints = points.filter((point, index) => {
+      let prevPoint = points[index - 1];
+      let nextPoint = points[index + 1];
+      if (prevPoint && nextPoint) {
+        let distToPrev = Math.hypot(point.x - prevPoint.x, point.y - prevPoint.y);
+        let distToNext = Math.hypot(point.x - nextPoint.x, point.y - nextPoint.y);
+        return distToPrev < distanceThreshold && distToNext < distanceThreshold;
+      }
+      return true;
+    });
+
+    // Cluster points
+    let clusteredPoints = [];
+    let currentCluster = [];
+    for (let i = 0; i < filteredPoints.length; i++) {
+      currentCluster.push(filteredPoints[i]);
+      if (currentCluster.length >= clusterSize) {
+        let centroid = {
+          x: currentCluster.reduce((sum, p) => sum + p.x, 0) / currentCluster.length,
+          y: currentCluster.reduce((sum, p) => sum + p.y, 0) / currentCluster.length
+        };
+        clusteredPoints.push(centroid);
+        currentCluster = [];
+      }
+    }
+    if (currentCluster.length > 0) {
+      let centroid = {
+        x: currentCluster.reduce((sum, p) => sum + p.x, 0) / currentCluster.length,
+        y: currentCluster.reduce((sum, p) => sum + p.y, 0) / currentCluster.length
+      };
+      clusteredPoints.push(centroid);
+    }
+    return clusteredPoints;
+  }
+
+
+  function smoothPath(points, epsilon) {
+    if (points.length < 3) return points;
+
+    let path = points.map(p => [p.x, p.y]);
+    let smoothedPath = rdp(path, epsilon);
+
+    return smoothedPath.map(p => ({ x: p[0], y: p[1] }));
+  }
+
+  function rdp(points, epsilon) {
+    if (points.length < 3) return points;
+
+    let dmax = 0;
+    let index = 0;
+    let end = points.length - 1;
+
+    for (let i = 1; i < end; i++) {
+      let d = perpendicularDistance(points[i], points[0], points[end]);
+      if (d > dmax) {
+        index = i;
+        dmax = d;
+      }
+    }
+
+    if (dmax > epsilon) {
+      let res1 = rdp(points.slice(0, index + 1), epsilon);
+      let res2 = rdp(points.slice(index), epsilon);
+
+      return res1.slice(0, res1.length - 1).concat(res2);
+    } else {
+      return [points[0], points[end]];
+    }
+  }
+
+  function perpendicularDistance(point, lineStart, lineEnd) {
+    let x0 = point[0], y0 = point[1];
+    let x1 = lineStart[0], y1 = lineStart[1];
+    let x2 = lineEnd[0], y2 = lineEnd[1];
+
+    let numerator = Math.abs((y2 - y1) * x0 - (x2 - x1) * y0 + x2 * y1 - y2 * x1);
+    let denominator = Math.sqrt(Math.pow(y2 - y1, 2) + Math.pow(x2 - x1, 2));
+
+    return numerator / denominator;
+  }
+
+  function removeAnomalies(points, maxDistance = 20){
+    let newPoints = [points[0]];
+    let prevPoint = points[0];
+    for (let i = 1; i < points.length; i++) {
+      let distance = Math.hypot(points[i].x - prevPoint.x, points[i].y - prevPoint.y);
+      if (distance < maxDistance) {
+        newPoints.push(points[i]);
+      }
+      console.log(distance)
+      prevPoint = points[i];
+    }
+    return newPoints;
+  }
+
+
+  document.getElementById('fileInput').addEventListener('change', function(e) {
+    let file = e.target.files[0];
+    let reader = new FileReader();
+    reader.onload = function(event) {
+      let img = new Image();
+      img.onload = function() {
+        let canvas = document.getElementById('canvasOutput');
+        let ctx = canvas.getContext('2d');
+        canvas.width = img.width;
+        canvas.height = img.height;
+        ctx.drawImage(img, 0, 0, img.width, img.height);
+
+        // Convert to grayscale and binarize
+        let src = cv.imread(canvas);
+        let gray = new cv.Mat();
+        cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY, 0);
+
+        let blurred = new cv.Mat();
+        cv.medianBlur(gray, blurred, 5);
+
+        let binary = new cv.Mat();
+        cv.threshold(blurred, binary, 220, 255, cv.THRESH_BINARY_INV);
+
+
+        // Detect contours
+        let contours = new cv.MatVector();
+        let hierarchy = new cv.Mat();
+        cv.findContours(binary, contours, hierarchy, cv.RETR_CCOMP, cv.CHAIN_APPROX_SIMPLE);
+
+        // Convert contours to points
+        let points = [];
+        for (let i = 0; i < contours.size(); ++i) {
+          let contour = contours.get(i);
+          for (let j = 0; j < contour.data32S.length; j += 2) {
+            points.push({ x: contour.data32S[j], y: contour.data32S[j + 1] });
+          }
+        }
+        //points = filterAndClusterPoints(points, 10, 5);
+        points = simplify(points, 1, true);
+        // points = removeAnomalies(points, 20);
+        //points = smoothPath(points, 1.0);
+
+        console.log(points)
+
+        // Draw contours on canvas
+        let point = points[0];
+        ctx.clearRect(0, 0, img.width, img.height)
+        ctx.fillStyle = 'red';
+        ctx.beginPath()
+        ctx.moveTo(point.x, point.y);
+        for (let i = 1; i < points.length; i++) {
+          let point = points[i];
+          ctx.lineTo(point.x, point.y);
+        }
+        ctx.stroke()
+
+        // Cleanup
+        src.delete();
+        gray.delete();
+        binary.delete();
+        contours.delete();
+        hierarchy.delete();
+      };
+      img.src = event.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
+</script>
+</body>
+</html>
